@@ -1,8 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Supabase;
-using WeatherBackend.Models;
 using WeatherBackend.Service;
 using System.Text.Json;
+using WeatherBackend.Models;
+using System.Security.Claims;
 
 namespace WeatherBackend.Controllers
 {
@@ -25,33 +26,42 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginModel model)
+        public async Task<IActionResult> Login([FromQuery] string email, [FromQuery] string password)
         {
             try
             {
-                if (string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.Password))
+                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
                 {
                     return BadRequest("Email and password are required");
                 }
 
-                var response = await _supabaseClient.Auth.SignIn(model.Email, model.Password);
+                var response = await _supabaseClient.Auth.SignIn(email, password);
+                if (response.User == null) return Unauthorized("Invalid credentials");
 
-                if (response.User != null)
+                string name = response.User.UserMetadata?.GetValueOrDefault("name")?.ToString() ?? "";
+                var accessToken = _jwtService.GenerateToken(response.User.Id, response.User.Email, name);
+                var refreshToken = Guid.NewGuid().ToString(); // Replace with secure refresh token logic
+
+                // Store refresh token in Supabase or a database (not shown here)
+                // Example: await _supabaseClient.From<RefreshToken>().Insert(new { UserId = response.User.Id, Token = refreshToken });
+
+                Response.Cookies.Append("access_token", accessToken, new CookieOptions
                 {
-                    string name = response.User.UserMetadata?.GetValueOrDefault("name")?.ToString() ?? "";
+                    HttpOnly = true,
+                    Secure = true,
+                    SameSite = SameSiteMode.Lax, // Changed to Lax
+                    Expires = DateTime.UtcNow.AddHours(1)
+                });
 
-                    var token = _jwtService.GenerateToken(response.User.Id, response.User.Email, name);
+                Response.Cookies.Append("refresh_token", refreshToken, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = true,
+                    SameSite = SameSiteMode.Strict,
+                    Expires = DateTime.UtcNow.AddDays(7)
+                });
 
-                    return Ok(new AuthResponse
-                    {
-                        Token = token,
-                        Id = response.User.Id,
-                        Email = response.User.Email,
-                        
-                    });
-                }
-
-                return Unauthorized("Invalid credentials");
+                return Ok(new { Id = response.User.Id, Email = response.User.Email });
             }
             catch (Exception ex)
             {
@@ -60,17 +70,42 @@ namespace WeatherBackend.Controllers
             }
         }
 
+        //[HttpPost("refresh")]
+        //public async Task<IActionResult> RefreshToken()
+        //{
+        //    var refreshToken = Request.Cookies["refresh_token"];
+        //    if (string.IsNullOrEmpty(refreshToken)) return Unauthorized("No refresh token provided");
+
+        //    // Validate refresh token (e.g., check against database)
+        //    // For simplicity, assume it's valid and linked to a user
+        //    var userId = "user-id-from-refresh-token"; // Replace with actual logic
+        //    var email = "user-email-from-refresh-token";
+        //    var name = "user-name-from-refresh-token";
+
+        //    var newAccessToken = _jwtService.GenerateToken(userId, email, name);
+
+        //    Response.Cookies.Append("access_token", newAccessToken, new CookieOptions
+        //    {
+        //        HttpOnly = true,
+        //        Secure = true,
+        //        SameSite = SameSiteMode.Lax,
+        //        Expires = DateTime.UtcNow.AddHours(1)
+        //    });
+
+        //    return Ok(new { Message = "Token refreshed" });
+        //}
+
         [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterModel model)
+        public async Task<IActionResult> Register([FromQuery] string email, [FromQuery] string password)
         {
             try
             {
-                if (string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.Password))
+                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
                 {
                     return BadRequest("Email and password are required");
                 }
 
-                var signUpResponse = await _supabaseClient.Auth.SignUp(model.Email, model.Password);
+                var signUpResponse = await _supabaseClient.Auth.SignUp(email, password);
 
                 if (signUpResponse.User != null)
                 {
@@ -98,6 +133,35 @@ namespace WeatherBackend.Controllers
             {
                 _logger.LogError(ex, "Error during logout");
                 return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("check")]
+        public IActionResult CheckAuthentication()
+        {
+            try
+            {
+                var accessToken = Request.Cookies["access_token"];
+                _logger.LogInformation($"Received access_token: {accessToken ?? "null"}");
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    return Unauthorized("No access token provided");
+                }
+
+                var principal = _jwtService.ValidateToken(accessToken);
+                if (principal == null)
+                {
+                    return Unauthorized("Invalid or expired token");
+                }
+
+                var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var email = principal.FindFirst(ClaimTypes.Email)?.Value;
+                return Ok(new { Id = userId, Email = email });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking authentication");
+                return StatusCode(500, "Internal server error");
             }
         }
     }
