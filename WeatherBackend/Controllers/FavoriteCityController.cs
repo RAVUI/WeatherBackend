@@ -16,24 +16,53 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpGet("{userId}")]
-        public async Task<IActionResult> GetFavoriteCities(string userId)
+        public async Task<ActionResult<List<FavoriteCity>>> GetFavoriteCities(string userId)
         {
-            var cities = await _favoriteCityService.GetFavoriteCities(userId);
-            return Ok(cities);
+            try
+            {
+                var cities = await _favoriteCityService.GetFavoriteCities(userId);
+                return Ok(cities);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> AddFavoriteCity([FromBody] FavoriteCity city)
+        public async Task<ActionResult<FavoriteCity>> AddFavoriteCity([FromBody] FavoriteCity city)
         {
-            await _favoriteCityService.AddFavoriteCity(city);
-            return Ok();
+            try
+            {
+                var addedCity = await _favoriteCityService.AddFavoriteCity(city);
+                return CreatedAtAction(nameof(GetFavoriteCities), new { userId = city.UserId }, addedCity);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(ex.Message);
+            }
         }
 
         [HttpDelete("{cityId}")]
-        public async Task<IActionResult> RemoveFavoriteCity(string cityId)
+        public async Task<IActionResult> RemoveFavoriteCity(string cityId, [FromQuery] string userId)
         {
-            await _favoriteCityService.RemoveFavoriteCity(cityId);
-            return Ok();
+            try
+            {
+                await _favoriteCityService.RemoveFavoriteCity(cityId, userId);
+                return Ok();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(ex.Message);
+            }
         }
     }
 }

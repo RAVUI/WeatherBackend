@@ -7,7 +7,7 @@ namespace WeatherBackend.Models
     {
         [BsonId]
         [BsonRepresentation(BsonType.ObjectId)]
-        public string Id { get; set; } = string.Empty;
+        public string Id { get; set; }
 
         [BsonElement("UserId")]
         public string UserId { get; set; } = string.Empty;

@@ -15,7 +15,7 @@ namespace WeatherBackend.Controllers
             _weatherService = weatherService;
         }
 
-        // ✅ Fetch current weather by city name
+        
         [HttpGet("search")]
         public async Task<IActionResult> GetWeatherByCity([FromQuery] string city)
         {
@@ -33,7 +33,7 @@ namespace WeatherBackend.Controllers
             return Ok(weatherData);
         }
 
-        // ✅ Fetch 5-day weather forecast by city name
+        
         [HttpGet("forecast")]
         public async Task<IActionResult> GetWeatherForecast([FromQuery] string city)
         {
@@ -51,7 +51,7 @@ namespace WeatherBackend.Controllers
             return Ok(forecast);
         }
 
-        // ✅ Fetch weather by geographic coordinates (latitude & longitude)
+        
         [HttpGet("current-location")]
         public async Task<IActionResult> GetWeatherByLocation([FromQuery] double lat, [FromQuery] double lon)
         {

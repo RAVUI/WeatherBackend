@@ -12,27 +12,25 @@ using WeatherBackend.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHttpClient();
 
-// Register WeatherService
+
 builder.Services.AddHttpClient<WeatherService>();
+builder.Services.AddScoped<UserHistoryService>();
+builder.Services.AddScoped<FavoriteCityService>();
+builder.Services.AddScoped<JwtService>();
 
-// MongoDB
 builder.Services.Configure<MongoDbSettings>(
     builder.Configuration.GetSection("MongoDbSettings"));
 builder.Services.AddSingleton<MongoDbContext>();
 
-//  Supabase client as singleton
-builder.Services.RegisterSupabaseClient(builder.Configuration); // Ensure correct namespace
+builder.Services.RegisterSupabaseClient(builder.Configuration);
 
-// Register Services
-builder.Services.AddScoped<UserHistoryService>();
-builder.Services.AddScoped<FavoriteCityService>();
 
-//Enable CORS 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
@@ -45,7 +43,6 @@ builder.Services.AddCors(options =>
 });
 
 
-//  custom services
 builder.Services.AddScoped<JwtService>();
 
 //  JWT Authentication

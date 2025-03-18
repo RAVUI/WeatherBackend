@@ -1,9 +1,11 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Supabase;
 using WeatherBackend.Service;
-using System.Text.Json;
 using WeatherBackend.Models;
 using System.Security.Claims;
+using System.Text.Json;
+using Supabase.Gotrue;
+using System.Text;
 
 namespace WeatherBackend.Controllers
 {
@@ -12,12 +14,12 @@ namespace WeatherBackend.Controllers
     public class AuthController : ControllerBase
     {
         private readonly JwtService _jwtService;
-        private readonly Client _supabaseClient;
+        private readonly Supabase.Client _supabaseClient;
         private readonly ILogger<AuthController> _logger;
 
         public AuthController(
             JwtService jwtService,
-            Client supabaseClient,
+            Supabase.Client supabaseClient,
             ILogger<AuthController> logger)
         {
             _jwtService = jwtService;
@@ -32,68 +34,35 @@ namespace WeatherBackend.Controllers
             {
                 if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
                 {
-                    return BadRequest("Email and password are required");
+                    _logger.LogWarning("Login attempt with missing email or password");
+                    return BadRequest(new MessageResponse { Message = "Email and password are required" });
                 }
 
                 var response = await _supabaseClient.Auth.SignIn(email, password);
-                if (response.User == null) return Unauthorized("Invalid credentials");
+                if (response?.User == null)
+                {
+                    _logger.LogWarning($"Login failed for email: {email} - Invalid credentials");
+                    return Unauthorized(new MessageResponse { Message = "Invalid credentials" });
+                }
 
                 string name = response.User.UserMetadata?.GetValueOrDefault("name")?.ToString() ?? "";
                 var accessToken = _jwtService.GenerateToken(response.User.Id, response.User.Email, name);
-                var refreshToken = Guid.NewGuid().ToString(); // Replace with secure refresh token logic
 
-                // Store refresh token in Supabase or a database (not shown here)
-                // Example: await _supabaseClient.From<RefreshToken>().Insert(new { UserId = response.User.Id, Token = refreshToken });
-
-                Response.Cookies.Append("access_token", accessToken, new CookieOptions
+                _logger.LogInformation($"Login successful for email: {email}");
+                return Ok(new LoginResponse
                 {
-                    HttpOnly = true,
-                    Secure = true,
-                    SameSite = SameSiteMode.Lax, // Changed to Lax
-                    Expires = DateTime.UtcNow.AddHours(1)
+                    Id = response.User.Id,
+                    Email = response.User.Email,
+                    AccessToken = accessToken,
+                    Metadata = response.User.UserMetadata ?? new Dictionary<string, object>()
                 });
-
-                Response.Cookies.Append("refresh_token", refreshToken, new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = true,
-                    SameSite = SameSiteMode.Strict,
-                    Expires = DateTime.UtcNow.AddDays(7)
-                });
-
-                return Ok(new { Id = response.User.Id, Email = response.User.Email });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during login");
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, $"Error during login for email: {email}");
+                return StatusCode(500, new MessageResponse { Message = $"Login failed: {ex.Message}" });
             }
         }
-
-        //[HttpPost("refresh")]
-        //public async Task<IActionResult> RefreshToken()
-        //{
-        //    var refreshToken = Request.Cookies["refresh_token"];
-        //    if (string.IsNullOrEmpty(refreshToken)) return Unauthorized("No refresh token provided");
-
-        //    // Validate refresh token (e.g., check against database)
-        //    // For simplicity, assume it's valid and linked to a user
-        //    var userId = "user-id-from-refresh-token"; // Replace with actual logic
-        //    var email = "user-email-from-refresh-token";
-        //    var name = "user-name-from-refresh-token";
-
-        //    var newAccessToken = _jwtService.GenerateToken(userId, email, name);
-
-        //    Response.Cookies.Append("access_token", newAccessToken, new CookieOptions
-        //    {
-        //        HttpOnly = true,
-        //        Secure = true,
-        //        SameSite = SameSiteMode.Lax,
-        //        Expires = DateTime.UtcNow.AddHours(1)
-        //    });
-
-        //    return Ok(new { Message = "Token refreshed" });
-        //}
 
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromQuery] string email, [FromQuery] string password)
@@ -102,22 +71,24 @@ namespace WeatherBackend.Controllers
             {
                 if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
                 {
-                    return BadRequest("Email and password are required");
+                    _logger.LogWarning("Register attempt with missing email or password");
+                    return BadRequest(new MessageResponse { Message = "Email and password are required" });
                 }
 
                 var signUpResponse = await _supabaseClient.Auth.SignUp(email, password);
-
-                if (signUpResponse.User != null)
+                if (signUpResponse?.User == null)
                 {
-                    return Ok(new { Message = "User registered successfully. Please log in." });
+                    _logger.LogWarning($"Registration failed for email: {email}");
+                    return BadRequest(new MessageResponse { Message = "Unable to register user" });
                 }
 
-                return BadRequest("Unable to register user");
+                _logger.LogInformation($"User registered successfully: {email}");
+                return Ok(new MessageResponse { Message = "User registered successfully. Please log in." });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during registration");
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, $"Error during registration for email: {email}");
+                return StatusCode(500, new MessageResponse { Message = $"Registration failed: {ex.Message}" });
             }
         }
 
@@ -127,41 +98,129 @@ namespace WeatherBackend.Controllers
             try
             {
                 await _supabaseClient.Auth.SignOut();
-                return Ok(new { Message = "Logged out successfully" });
+                _logger.LogInformation("User logged out successfully");
+                return Ok(new MessageResponse { Message = "Logged out successfully" });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during logout");
-                return BadRequest(ex.Message);
+                return StatusCode(500, new MessageResponse { Message = $"Logout failed: {ex.Message}" });
             }
         }
 
         [HttpGet("check")]
-        public IActionResult CheckAuthentication()
+        public IActionResult CheckAuthentication([FromQuery] string accessToken)
         {
             try
             {
-                var accessToken = Request.Cookies["access_token"];
-                _logger.LogInformation($"Received access_token: {accessToken ?? "null"}");
+                _logger.LogInformation($"Checking token: {accessToken ?? "null"}");
                 if (string.IsNullOrEmpty(accessToken))
                 {
-                    return Unauthorized("No access token provided");
+                    _logger.LogWarning("No access token provided");
+                    return Unauthorized(new MessageResponse { Message = "No access token provided" });
                 }
 
                 var principal = _jwtService.ValidateToken(accessToken);
                 if (principal == null)
                 {
-                    return Unauthorized("Invalid or expired token");
+                    _logger.LogWarning("Invalid or expired token");
+                    return Unauthorized(new MessageResponse { Message = "Invalid or expired token" });
                 }
 
                 var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var email = principal.FindFirst(ClaimTypes.Email)?.Value;
-                return Ok(new { Id = userId, Email = email });
+                _logger.LogInformation($"Token validated for user: {email}");
+                return Ok(new AuthCheckResponse { Id = userId, Email = email });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error checking authentication");
-                return StatusCode(500, "Internal server error");
+                return StatusCode(500, new MessageResponse { Message = "Internal server error" });
+            }
+        }
+
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromQuery] string email)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(email))
+                {
+                    _logger.LogWarning("Forgot password attempt with missing email");
+                    return BadRequest(new MessageResponse { Message = "Email is required" });
+                }
+
+                await _supabaseClient.Auth.ResetPasswordForEmail(email);
+
+                _logger.LogInformation($"Password reset email sent successfully for: {email}");
+                return Ok(new MessageResponse
+                {
+                    Message = "Password reset email sent. Please check your inbox."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error during forgot password for email: {email}");
+                return StatusCode(500, new MessageResponse
+                {
+                    Message = $"Password reset request failed: {ex.Message}"
+                });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(
+     [FromQuery] string accessToken,
+     [FromQuery] string newPassword,
+     [FromQuery] string confirmPassword,
+     [FromServices] IHttpClientFactory httpClientFactory)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    _logger.LogWarning("Reset password attempt with missing token");
+                    return BadRequest(new MessageResponse { Message = "Reset token is required" });
+                }
+
+                if (string.IsNullOrEmpty(newPassword) || string.IsNullOrEmpty(confirmPassword))
+                {
+                    _logger.LogWarning("Reset password attempt with missing password fields");
+                    return BadRequest(new MessageResponse { Message = "New password and confirmation are required" });
+                }
+
+                if (newPassword != confirmPassword)
+                {
+                    _logger.LogWarning("Reset password attempt with mismatched passwords");
+                    return BadRequest(new MessageResponse { Message = "Passwords do not match" });
+                }
+
+                var httpClient = httpClientFactory.CreateClient();
+                httpClient.BaseAddress = new Uri("https://igzzdouwftacsfbcwvoc.supabase.co"); 
+                httpClient.DefaultRequestHeaders.Add("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlnenpkb3V3ZnRhY3NmYmN3dm9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk3ODg5NzgsImV4cCI6MjA1NTM2NDk3OH0.wr_Ki3Vtw8_xnPE0nhmK1nVmIXlLKdquqwTVRpZiBRE"); // Your API key
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+               
+                var updateBody = new { password = newPassword };
+                var updateContent = new StringContent(JsonSerializer.Serialize(updateBody), Encoding.UTF8, "application/json");
+                var updateResponse = await httpClient.PutAsync("/auth/v1/user", updateContent);
+                if (!updateResponse.IsSuccessStatusCode)
+                {
+                    var errorContent = await updateResponse.Content.ReadAsStringAsync();
+                    _logger.LogWarning($"Password update failed: {errorContent}");
+                    return BadRequest(new MessageResponse { Message = "Failed to reset password." });
+                }
+
+                _logger.LogInformation($"Password reset successfully for user");
+                return Ok(new MessageResponse { Message = "Password reset successfully. Please log in with your new password." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during password reset");
+                return StatusCode(500, new MessageResponse
+                {
+                    Message = $"Password reset failed: {ex.Message}"
+                });
             }
         }
     }
