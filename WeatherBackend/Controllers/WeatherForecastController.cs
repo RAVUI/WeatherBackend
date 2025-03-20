@@ -1,9 +1,10 @@
+
 using Microsoft.AspNetCore.Mvc;
 
 namespace WeatherBackend.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("v{version:apiVersion}/[controller]")]
     public class WeatherForecastController : ControllerBase
     {
         private static readonly string[] Summaries = new[]
@@ -19,9 +20,10 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpGet(Name = "GetWeatherForecast")]
+        [ApiVersion("1.0")]
         public IEnumerable<WeatherForecast> Get()
         {
-            return Enumerable.Range(1, 5).Select(index => new WeatherForecast
+            return Enumerable.Range(1, 6).Select(index => new WeatherForecast
             {
                 Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
                 TemperatureC = Random.Shared.Next(-20, 55),

@@ -5,7 +5,7 @@ using WeatherBackend.Service;
 
 namespace WeatherBackend.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/v{version:apiVersion}/[controller]")]
     [ApiController]
     public class UserHistoryController : ControllerBase
     {
@@ -17,6 +17,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpGet("{userId}")]
+        [ApiVersion("1.0")]
         public async Task<ActionResult<List<UserSearchHistory>>> GetUserHistory(string userId)
         {
             try
@@ -35,12 +36,13 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost]
+        [ApiVersion("1.0")]
         public async Task<ActionResult<UserSearchHistory>> AddSearchHistory(
             [FromBody] UserSearchHistory history)
         {
             try
             {
-                // Ensure ID is not manually set
+                
                 history.Id = ObjectId.GenerateNewId().ToString();
 
                 var addedHistory = await _userHistoryService.AddSearchHistory(history);
@@ -61,6 +63,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpDelete("{historyId}")]
+        [ApiVersion("1.0")]
         public async Task<IActionResult> DeleteSearchHistory(
             string historyId,
             [FromQuery] string userId)
@@ -85,6 +88,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpDelete("clear/{userId}")]
+        [ApiVersion("1.0")]
         public async Task<IActionResult> ClearAllUserSearchHistory(string userId)
         {
             try

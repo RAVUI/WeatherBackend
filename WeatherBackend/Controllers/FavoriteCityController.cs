@@ -4,7 +4,7 @@ using WeatherBackend.Service;
 
 namespace WeatherBackend.Controllers
 {
-    [Route("api/favoritecities")]
+    [Route("api/v{version:apiVersion}/favoritecities")]
     [ApiController]
     public class FavoriteCityController : ControllerBase
     {
@@ -16,6 +16,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpGet("{userId}")]
+        [ApiVersion("1.0")]
         public async Task<ActionResult<List<FavoriteCity>>> GetFavoriteCities(string userId)
         {
             try
@@ -30,6 +31,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost]
+        [ApiVersion("1.0")]
         public async Task<ActionResult<FavoriteCity>> AddFavoriteCity([FromBody] FavoriteCity city)
         {
             try
@@ -48,6 +50,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpDelete("{cityId}")]
+        [ApiVersion("1.0")]
         public async Task<IActionResult> RemoveFavoriteCity(string cityId, [FromQuery] string userId)
         {
             try

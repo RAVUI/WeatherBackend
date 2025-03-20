@@ -10,7 +10,7 @@ using System.Text;
 namespace WeatherBackend.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/v{version:apiVersion}/[controller]")]
     public class AuthController : ControllerBase
     {
         private readonly JwtService _jwtService;
@@ -28,6 +28,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost("login")]
+        [ApiVersion("1.0")] 
         public async Task<IActionResult> Login([FromQuery] string email, [FromQuery] string password)
         {
             try
@@ -65,6 +66,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost("register")]
+        [ApiVersion("1.0")] 
         public async Task<IActionResult> Register([FromQuery] string email, [FromQuery] string password)
         {
             try
@@ -93,6 +95,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost("logout")]
+        [ApiVersion("1.0")]
         public async Task<IActionResult> Logout()
         {
             try
@@ -109,6 +112,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpGet("check")]
+        [ApiVersion("1.0")] 
         public IActionResult CheckAuthentication([FromQuery] string accessToken)
         {
             try
@@ -140,6 +144,7 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost("forgot-password")]
+        [ApiVersion("1.0")] 
         public async Task<IActionResult> ForgotPassword([FromQuery] string email)
         {
             try
@@ -169,11 +174,12 @@ namespace WeatherBackend.Controllers
         }
 
         [HttpPost("reset-password")]
+        [ApiVersion("1.0")] 
         public async Task<IActionResult> ResetPassword(
-     [FromQuery] string accessToken,
-     [FromQuery] string newPassword,
-     [FromQuery] string confirmPassword,
-     [FromServices] IHttpClientFactory httpClientFactory)
+            [FromQuery] string accessToken,
+            [FromQuery] string newPassword,
+            [FromQuery] string confirmPassword,
+            [FromServices] IHttpClientFactory httpClientFactory)
         {
             try
             {
@@ -200,7 +206,6 @@ namespace WeatherBackend.Controllers
                 httpClient.DefaultRequestHeaders.Add("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlnenpkb3V3ZnRhY3NmYmN3dm9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk3ODg5NzgsImV4cCI6MjA1NTM2NDk3OH0.wr_Ki3Vtw8_xnPE0nhmK1nVmIXlLKdquqwTVRpZiBRE"); // Your API key
                 httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
-               
                 var updateBody = new { password = newPassword };
                 var updateContent = new StringContent(JsonSerializer.Serialize(updateBody), Encoding.UTF8, "application/json");
                 var updateResponse = await httpClient.PutAsync("/auth/v1/user", updateContent);
